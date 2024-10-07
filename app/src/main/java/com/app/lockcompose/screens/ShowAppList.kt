@@ -16,7 +16,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,7 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -41,10 +39,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -66,8 +62,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.app.lockcompose.AppInfo
 import com.app.lockcompose.IAppCommunicationService
-
+import java.io.ByteArrayOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,7 +102,7 @@ fun ShowAppList() {
     // Bind to the remote service when the composable enters the composition
     DisposableEffect(Unit) {
         val intent = Intent().apply {
-            component = ComponentName("com.example.remoteapp", "com.example.remoteapp.AppCommunicationService")
+            component = ComponentName("com.app.lockcompose", "com.app.lockcompose.AppCommunicationService")
         }
         context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
 
@@ -114,14 +111,23 @@ fun ShowAppList() {
         }
     }
 
-    // Function to send selected apps, interval, and PIN to the AIDL service
     fun sendSelectedAppsToAnotherApp(selectedApps: List<InstalledApp>, selectedInterval: Int, pinCode: String) {
-        val packageNames = selectedApps.map { it.packageName }
+        // Convert the selected apps to AppInfo
+        val appInfos : MutableList<AppInfo> = selectedApps.map { app ->
+            AppInfo(
+                packageName = app.packageName,
+                appName = app.name,
+                appIcon = app.icon?.toBitmap()?.let { bitmap ->
+                    val stream = ByteArrayOutputStream()
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                    stream.toByteArray()
+                } ?: byteArrayOf() // Fallback to empty byte array if icon is null
+            )
+        }.toMutableList() // Convert List<AppInfo> to MutableList<AppInfo>
+
         if (isBound && appService != null && pinCode.isNotEmpty()) {
             try {
-                appService?.sendAppData(packageNames, selectedInterval.toString(), pinCode)
-                // Reset the state after sending data
-                //resetSelections()  // Use resetSelections to reset the values
+                appService?.sendAppData(appInfos, selectedInterval.toString(), pinCode)
             } catch (e: RemoteException) {
                 e.printStackTrace()
             }
@@ -248,6 +254,8 @@ fun ShowAppList() {
     }
 }
 
+
+// InstalledApp data class
 data class InstalledApp(
     val packageName: String,
     val name: String,
@@ -269,7 +277,7 @@ fun getInstalledApps(context: Context): List<InstalledApp> {
     }
 }
 
-// Function to convert Drawable to Bitmap for displaying app icons
+// Convert Drawable to Bitmap for displaying app icons
 fun Drawable.toBitmap(): Bitmap {
     val bitmap = Bitmap.createBitmap(intrinsicWidth, intrinsicHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
