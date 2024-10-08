@@ -1,16 +1,16 @@
 
-import android.content.ComponentName
+
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.AdaptiveIconDrawable
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.os.Build
-import android.os.IBinder
-import android.os.RemoteException
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -44,7 +44,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,16 +61,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.app.lockcompose.AppInfo
-import com.app.lockcompose.IAppCommunicationService
+import androidx.core.graphics.drawable.toBitmap
 import java.io.ByteArrayOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShowAppList() {
     val context = LocalContext.current
-    var appService: IAppCommunicationService? by remember { mutableStateOf(null) }
-    var isBound by remember { mutableStateOf(false) }
 
     // List of installed apps
     val allApps = remember { getInstalledApps(context) }
@@ -86,67 +82,36 @@ fun ShowAppList() {
     // PIN code input field
     var pinCode by remember { mutableStateOf("") }
 
-    // AIDL service connection
-    val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            appService = IAppCommunicationService.Stub.asInterface(service)
-            isBound = true
-        }
+    fun sendSelectedAppsToAnotherApp(context: Context, selectedApps: List<InstalledApp>, selectedInterval: Int, pinCode: String) {
+        val contentResolver = context.contentResolver
 
-        override fun onServiceDisconnected(name: ComponentName?) {
-            appService = null
-            isBound = false
-        }
-    }
-
-    // Bind to the remote service when the composable enters the composition
-    DisposableEffect(Unit) {
-        val intent = Intent().apply {
-            component = ComponentName("com.app.lockcompose", "com.app.lockcompose.AppCommunicationService")
-        }
-        context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-
-        onDispose {
-            context.unbindService(connection)
-        }
-    }
-
-    fun sendSelectedAppsToAnotherApp(selectedApps: List<InstalledApp>, selectedInterval: Int, pinCode: String) {
-        // Convert the selected apps to AppInfo
-        val appInfos : MutableList<AppInfo> = selectedApps.map { app ->
-            AppInfo(
-                packageName = app.packageName,
-                appName = app.name,
-                appIcon = app.icon?.toBitmap()?.let { bitmap ->
-                    val stream = ByteArrayOutputStream()
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-                    stream.toByteArray()
-                } ?: byteArrayOf() // Fallback to empty byte array if icon is null
-            )
-        }.toMutableList() // Convert List<AppInfo> to MutableList<AppInfo>
-
-        if (isBound && appService != null && pinCode.isNotEmpty()) {
-            try {
-                appService?.sendAppData(appInfos, selectedInterval.toString(), pinCode)
-            } catch (e: RemoteException) {
-                e.printStackTrace()
+        selectedApps.forEach { app ->
+            val values = ContentValues().apply {
+                put("package_name", app.packageName)
+                put("name", app.name)
+                put("icon", app.icon?.let { drawableToByteArray(it) }) // Convert Drawable to ByteArray
+                put("interval", selectedInterval.toString())
+                put("pin_code", pinCode)
             }
+
+            contentResolver.insert(
+                Uri.parse("content://com.app.lockcomposeAdmin.provider/apps"), values // Insert the data
+            )
         }
+
+        Toast.makeText(context, "Data sent via ContentProvider", Toast.LENGTH_SHORT).show()
     }
 
-    // Function to convert the interval from string to an integer (remove "min")
     fun parseInterval(interval: String): Int {
         return interval.replace(" min", "").toIntOrNull() ?: 0
     }
 
-    // Function to reset selections after sending data
     fun resetSelections() {
         selectedInterval = "Select Interval"  // Reset interval
         selectedApps.clear()  // Clear the selected apps list
         pinCode = ""  // Reset the PIN code
     }
 
-    // User Interface for selecting apps and interval
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -234,7 +199,7 @@ fun ShowAppList() {
                 if (pinCode.isNotEmpty() && selectedApps.isNotEmpty() && selectedInterval != "Select Interval") {
                     // Convert the interval string to an integer
                     val intervalInMinutes = parseInterval(selectedInterval)
-                    sendSelectedAppsToAnotherApp(selectedApps, intervalInMinutes, pinCode)
+                    sendSelectedAppsToAnotherApp(context, selectedApps, intervalInMinutes, pinCode)
                     Toast.makeText(context, "Data sent successfully", Toast.LENGTH_SHORT).show()
                 } else {
                     // Show a message if validation fails
@@ -254,6 +219,28 @@ fun ShowAppList() {
     }
 }
 
+// Helper function to convert Drawable to ByteArray
+fun drawableToByteArray(drawable: Drawable): ByteArray {
+    val bitmap = when (drawable) {
+        is BitmapDrawable -> drawable.bitmap
+        is AdaptiveIconDrawable -> {
+            val bitmap = Bitmap.createBitmap(
+                drawable.intrinsicWidth,
+                drawable.intrinsicHeight,
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            bitmap
+        }
+        else -> throw IllegalArgumentException("Unsupported drawable type")
+    }
+
+    val stream = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+    return stream.toByteArray()
+}
 
 // InstalledApp data class
 data class InstalledApp(
@@ -275,15 +262,6 @@ fun getInstalledApps(context: Context): List<InstalledApp> {
         val icon = resolveInfo.loadIcon(context.packageManager)
         InstalledApp(packageName, name, icon)
     }
-}
-
-// Convert Drawable to Bitmap for displaying app icons
-fun Drawable.toBitmap(): Bitmap {
-    val bitmap = Bitmap.createBitmap(intrinsicWidth, intrinsicHeight, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    setBounds(0, 0, canvas.width, canvas.height)
-    draw(canvas)
-    return bitmap
 }
 
 // Composable for rendering each app in the list
