@@ -41,8 +41,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -76,7 +79,7 @@ fun ShowAppList() {
 
     // Time intervals for the dropdown menu
     var expanded by remember { mutableStateOf(false) }
-    var selectedInterval by remember { mutableStateOf("Select Interval") }  // Use mutable state to allow reassignment
+    var selectedInterval by remember { mutableStateOf("Select Interval") }
     val timeIntervals = listOf("1 min", "15 min", "30 min", "45 min", "60 min", "75 min", "90 min", "120 min")
 
     // PIN code input field
@@ -107,114 +110,124 @@ fun ShowAppList() {
     }
 
     fun resetSelections() {
-        selectedInterval = "Select Interval"  // Reset interval
-        selectedApps.clear()  // Clear the selected apps list
-        pinCode = ""  // Reset the PIN code
+        selectedInterval = "Select Interval"
+        selectedApps.clear()
+        pinCode = ""
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.White)
-            .padding(16.dp) // Ensure padding around the entire UI
-    ) {
-
-        // Time Interval Picker (Fixed Dropdown Menu)
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = !expanded }, // Toggle expanded state
-            modifier = Modifier.fillMaxWidth() // Ensure the ExposedDropdownMenuBox fills the width
+    // Scaffold to include the AppBar
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Rules List") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFFE0E0E0) // Light gray background color
+                )
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                .padding(paddingValues)
+                .padding(16.dp)
         ) {
-            // TextField to show the selected interval
-            TextField(
-                value = selectedInterval,
-                onValueChange = {},
-                readOnly = true, // Prevent direct editing
-                label = { Text("Select Time Interval") },
-                trailingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = null
+            // Time Interval Picker (Fixed Dropdown Menu)
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                TextField(
+                    value = selectedInterval,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Select Time Interval") },
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                ) {
+                    timeIntervals.forEach { interval ->
+                        DropdownMenuItem(
+                            text = { Text(interval) },
+                            onClick = {
+                                selectedInterval = interval
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // List of apps with selection functionality
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(15.dp)
+            ) {
+                items(availableApps) { app ->
+                    val isSelected = selectedApps.contains(app)
+                    AppListItem(
+                        app = app,
+                        isSelected = isSelected,
+                        onClick = {
+                            if (isSelected) {
+                                selectedApps.remove(app)
+                            } else {
+                                selectedApps.add(app)
+                            }
+                        }
                     )
+                }
+            }
+
+            // PIN Code Input
+            TextField(
+                value = pinCode,
+                onValueChange = { pinCode = it },
+                label = { Text("Enter PIN Code") },
+                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp)
+            )
+
+            // Button to send selected apps and interval to the server app
+            Button(
+                onClick = {
+                    if (pinCode.isNotEmpty() && selectedApps.isNotEmpty() && selectedInterval != "Select Interval") {
+                        val intervalInMinutes = parseInterval(selectedInterval)
+                        sendSelectedAppsToAnotherApp(context, selectedApps, intervalInMinutes, pinCode)
+                        Toast.makeText(context, "Data sent successfully", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Please fill all required fields", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 modifier = Modifier
-                    .fillMaxWidth() // Ensure the TextField fills the width
-                    .menuAnchor() // Attach dropdown to TextField
-            )
-
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier
-                    .fillMaxWidth() // Ensure the dropdown menu fills the width
-                    .heightIn(max = 200.dp) // Limit dropdown height for better UI
+                    .fillMaxWidth()
+                    .height(60.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Green)
             ) {
-                timeIntervals.forEach { interval ->
-                    DropdownMenuItem(
-                        text = { Text(interval) },
-                        onClick = {
-                            selectedInterval = interval
-                            expanded = false // Close after selection
-                        }
-                    )
-                }
-            }
-        }
-
-        // List of apps with selection functionality
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .padding(15.dp)
-        ) {
-            items(availableApps) { app ->
-                val isSelected = selectedApps.contains(app)
-                AppListItem(
-                    app = app,
-                    isSelected = isSelected,
-                    onClick = {
-                        if (isSelected) {
-                            selectedApps.remove(app)
-                        } else {
-                            selectedApps.add(app)
-                        }
-                    }
+                Text(
+                    text = "Send to Another App",
+                    color = Color.White
                 )
             }
-        }
-
-        // PIN Code Input
-        TextField(
-            value = pinCode,
-            onValueChange = { pinCode = it },
-            label = { Text("Enter PIN Code") },
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
-        )
-
-        // Button to send selected apps and interval to the server app
-        Button(
-            onClick = {
-                // Check if pinCode, selectedApps, and selectedInterval are valid
-                if (pinCode.isNotEmpty() && selectedApps.isNotEmpty() && selectedInterval != "Select Interval") {
-                    // Convert the interval string to an integer
-                    val intervalInMinutes = parseInterval(selectedInterval)
-                    sendSelectedAppsToAnotherApp(context, selectedApps, intervalInMinutes, pinCode)
-                    Toast.makeText(context, "Data sent successfully", Toast.LENGTH_SHORT).show()
-                } else {
-                    // Show a message if validation fails
-                    Toast.makeText(context, "Please fill all required fields", Toast.LENGTH_SHORT).show()
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Green)
-        ) {
-            Text(
-                text = "Send to Another App",
-                color = Color.White
-            )
         }
     }
 }
