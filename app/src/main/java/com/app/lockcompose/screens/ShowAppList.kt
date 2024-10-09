@@ -109,13 +109,8 @@ fun ShowAppList() {
         return interval.replace(" min", "").toIntOrNull() ?: 0
     }
 
-    fun resetSelections() {
-        selectedInterval = "Select Interval"
-        selectedApps.clear()
-        pinCode = ""
-    }
 
-
+    
     Scaffold(
         topBar = {
             TopAppBar(
