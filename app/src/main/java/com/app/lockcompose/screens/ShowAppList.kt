@@ -119,7 +119,7 @@ fun ShowAppList() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Rules List") },
+                title = { Text("》Rules list") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFE0E0E0)
                 )
