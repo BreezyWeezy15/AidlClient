@@ -115,13 +115,13 @@ fun ShowAppList() {
         pinCode = ""
     }
 
-    // Scaffold to include the AppBar
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Rules List") },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFE0E0E0) // Light gray background color
+                    containerColor = Color(0xFFE0E0E0)
                 )
             )
         }
@@ -174,7 +174,6 @@ fun ShowAppList() {
                 }
             }
 
-            // List of apps with selection functionality
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
@@ -207,15 +206,25 @@ fun ShowAppList() {
                     .padding(vertical = 16.dp)
             )
 
-            // Button to send selected apps and interval to the server app
             Button(
                 onClick = {
-                    if (pinCode.isNotEmpty() && selectedApps.isNotEmpty() && selectedInterval != "Select Interval") {
-                        val intervalInMinutes = parseInterval(selectedInterval)
-                        sendSelectedAppsToAnotherApp(context, selectedApps, intervalInMinutes, pinCode)
-                        Toast.makeText(context, "Data sent successfully", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Please fill all required fields", Toast.LENGTH_SHORT).show()
+                    try {
+                        if (pinCode.isNotEmpty() && selectedApps.isNotEmpty() && selectedInterval != "Select Interval") {
+                            val intervalInMinutes = parseInterval(selectedInterval)
+
+                            try {
+                                sendSelectedAppsToAnotherApp(context, selectedApps, intervalInMinutes, pinCode)
+                                Toast.makeText(context, "Data sent successfully", Toast.LENGTH_SHORT).show()
+                            } catch (e: IllegalArgumentException) {
+                                Toast.makeText(context, "Failed to send data: Invalid ContentProvider URI", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Failed to send data: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                            }
+                        } else {
+                            Toast.makeText(context, "Please fill all required fields", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Unexpected error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                     }
                 },
                 modifier = Modifier
